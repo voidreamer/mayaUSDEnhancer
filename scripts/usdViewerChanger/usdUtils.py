@@ -20,6 +20,40 @@ class PrimInfo:
     path: Sdf.Path
 
 
+@dataclass
+class VariantSetInfo:
+    name: str
+    variants: List[str]
+    current_selection: str
+
+
+def get_variant_sets(prim: Usd.Prim) -> List[VariantSetInfo]:
+    variant_sets = []
+    for vs_name in prim.GetVariantSets().GetNames():
+        vs = prim.GetVariantSet(vs_name)
+        variants = vs.GetVariantNames()
+        current_selection = vs.GetVariantSelection()
+        variant_sets.append(VariantSetInfo(vs_name, variants, current_selection))
+    return variant_sets
+
+
+def set_variant_selection(prim: Usd.Prim, variant_set: str, variant: str) -> None:
+    vs = prim.GetVariantSet(variant_set)
+    vs.SetVariantSelection(variant)
+
+
+def has_payload(prim: Usd.Prim) -> bool:
+    return prim.HasPayload()
+
+
+def load_payload(prim: Usd.Prim) -> None:
+    prim.Load()
+
+
+def unload_payload(prim: Usd.Prim) -> None:
+    prim.Unload()
+
+
 def get_prim_kind(prim: Usd.Prim) -> str:
     return Usd.ModelAPI(prim).GetKind() or ""
 

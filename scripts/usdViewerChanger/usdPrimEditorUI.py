@@ -1,6 +1,17 @@
 from PySide2 import QtWidgets, QtCore
 from .usdTreeModel import UsdTreeModel
-from .usdUtils import PrimPurpose, set_prim_kind, set_prim_purpose, get_stage_as_text, update_stage_from_text
+from .usdUtils import (
+    PrimPurpose,
+    set_prim_kind,
+    set_prim_purpose,
+    get_stage_as_text,
+    update_stage_from_text,
+    get_variant_sets,
+    set_variant_selection,
+    has_payload,
+    load_payload,
+    unload_payload
+)
 from pxr import Usd, Sdf
 import maya.cmds as cmds
 import mayaUsd
@@ -64,6 +75,83 @@ class UsdPrimEditor(QtWidgets.QWidget):
         self.update_stage_button.clicked.connect(self.update_stage_from_text)
 
         # We'll connect the tree_view selection signal in refresh_tree_view
+
+        # Variant Set editors
+        self.variant_set_layout = QtWidgets.QVBoxLayout()
+        self.variant_set_layout.addWidget(QtWidgets.QLabel("Variant Sets:"))
+        self.variant_set_widget = QtWidgets.QWidget()
+        self.variant_set_widget.setLayout(self.variant_set_layout)
+
+        # Payload controls
+        self.payload_layout = QtWidgets.QHBoxLayout()
+        self.payload_label = QtWidgets.QLabel("Payload:")
+        self.load_payload_button = QtWidgets.QPushButton("Load")
+        self.unload_payload_button = QtWidgets.QPushButton("Unload")
+        self.payload_layout.addWidget(self.payload_label)
+        self.payload_layout.addWidget(self.load_payload_button)
+        self.payload_layout.addWidget(self.unload_payload_button)
+
+        # Add new widgets to layout
+        layout.addWidget(self.variant_set_widget)
+        layout.addLayout(self.payload_layout)
+
+        # Connect new signals
+        self.load_payload_button.clicked.connect(self.load_selected_payload)
+        self.unload_payload_button.clicked.connect(self.unload_selected_payload)
+
+    def update_property_editors(self):
+        selected_indexes = self.tree_view.selectedIndexes()
+        if selected_indexes:
+            kind = self.tree_view.model().item(selected_indexes[0].row(), 2).text()
+            purpose = self.tree_view.model().item(selected_indexes[0].row(), 3).text()
+            self.kind_combo.setCurrentText(kind)
+            self.purpose_combo.setCurrentText(purpose)
+
+            # Update variant set editors
+            prim_path_str = selected_indexes[0].data(QtCore.Qt.UserRole)
+            prim_path = Sdf.Path(prim_path_str)
+            prim = self.stage.GetPrimAtPath(prim_path)
+
+            # Clear previous variant set widgets
+            for i in reversed(range(1, self.variant_set_layout.count())):
+                self.variant_set_layout.itemAt(i).widget().setParent(None)
+
+            for vs_info in get_variant_sets(prim):
+                vs_layout = QtWidgets.QHBoxLayout()
+                vs_layout.addWidget(QtWidgets.QLabel(vs_info.name))
+                vs_combo = QtWidgets.QComboBox()
+                vs_combo.addItems(vs_info.variants)
+                vs_combo.setCurrentText(vs_info.current_selection)
+                vs_combo.currentTextChanged.connect(lambda text, name=vs_info.name: self.set_variant(prim, name, text))
+                vs_layout.addWidget(vs_combo)
+                self.variant_set_layout.addLayout(vs_layout)
+
+            # Update payload controls
+            has_payload_value = has_payload(prim)
+            self.load_payload_button.setEnabled(has_payload_value)
+            self.unload_payload_button.setEnabled(has_payload_value)
+
+    def set_variant(self, prim, variant_set, variant):
+        set_variant_selection(prim, variant_set, variant)
+        self.refresh_tree_view()
+
+    def load_selected_payload(self):
+        selected_indexes = self.tree_view.selectedIndexes()
+        if selected_indexes:
+            prim_path_str = selected_indexes[0].data(QtCore.Qt.UserRole)
+            prim_path = Sdf.Path(prim_path_str)
+            prim = self.stage.GetPrimAtPath(prim_path)
+            load_payload(prim)
+            self.refresh_tree_view()
+
+    def unload_selected_payload(self):
+        selected_indexes = self.tree_view.selectedIndexes()
+        if selected_indexes:
+            prim_path_str = selected_indexes[0].data(QtCore.Qt.UserRole)
+            prim_path = Sdf.Path(prim_path_str)
+            prim = self.stage.GetPrimAtPath(prim_path)
+            unload_payload(prim)
+            self.refresh_tree_view()
 
     def refresh_tree_view(self):
         selected = cmds.ls(sl=1, ufe=1)
